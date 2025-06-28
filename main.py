@@ -5,7 +5,6 @@ import time
 import plotly.graph_objects as go
 from datetime import datetime
 from plotly.subplots import make_subplots
-from streamlit_autorefresh import st_autorefresh
 
 API_KEY = st.secrets["API_KEY"]
 TICKER_DURATION = 10
