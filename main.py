@@ -311,8 +311,6 @@ def chart_component():
         fig.update_xaxes(showgrid=True, row=1, col=1)
 
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
-
-    st.metric(label="All Time High", value='$109,030.12')
 chart_component()
 # === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
 
