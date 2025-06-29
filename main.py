@@ -296,7 +296,7 @@ with st.sidebar:
     @st.fragment(run_every=5)
     def fng_index():
         st.divider()        
-        fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
+        fng_url = "https://api.alternative.me/fng/?limit=10&format=json"
         fng_response = requests.get(fng_url)
         fng_data = fng_response.json()['data']
 
@@ -335,7 +335,7 @@ with st.sidebar:
 
         st.title(f"{title_icon} Crypto Market Sentiment {title_badge}")
 
-        df_fng_chart = df_fng.tail(14)
+        df_fng_chart = df_fng.tail(7)
         df_fng_chart = df_fng_chart.set_index('UTCTIME')
         fng_line_data = df_fng_chart[['FNG_VALUE']]
 
