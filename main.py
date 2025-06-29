@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from plotly.subplots import make_subplots
 
-API_KEY = st.secrets["API_KEY_2"]
+API_KEY = st.secrets["API_KEY"]
 TICKER_DURATION = 10
 
 
@@ -116,7 +116,7 @@ def ticker_component():
     ticker_ath_ts = datetime.fromtimestamp(ticker_ath_ts)
     ticker_ath_ts = ticker_ath_ts.strftime('%d %b %Y')
 
-    col1, col2, col3 = st.columns(3, vertical_alignment='center')
+    col1, col2, col3 = st.columns(3, vertical_alignment='top')
     with col1:
         st.metric(label=st.session_state['crypto_symbol'], value=f"${ticker_value}", delta=f"{day_change} (24h)")
     with col2:
@@ -168,9 +168,7 @@ def chart_component():
     df['MA7'] = df['CLOSE'].rolling(window=7).mean()
     df['MA50'] = df['CLOSE'].rolling(window=50).mean()
     df['MA100'] = df['CLOSE'].rolling(window=100).mean()
-    df['EMA7'] = df['CLOSE'].ewm(span=7, adjust=False).mean()
-    df['EMA50'] = df['CLOSE'].ewm(span=50, adjust=False).mean()
-    df['EMA100'] = df['CLOSE'].ewm(span=100, adjust=False).mean()
+
 
     show_range = st.session_state['selected_range']
     df_show = df.tail(show_range)
