@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from plotly.subplots import make_subplots
 
-API_KEY = st.secrets["API_KEY"]
+API_KEY = st.secrets["API_KEY_2"]
 TICKER_DURATION = 10
 
 
@@ -22,8 +22,6 @@ if 'selected_range' not in st.session_state:
     st.session_state['selected_range'] = 30
 if 'selected_chart' not in st.session_state:
     st.session_state['selected_chart'] = 'Candlestick'
-if 'show_volume' not in st.session_state:
-    st.session_state['show_volume'] = 'Volume'
 if 'selected_indicator' not in st.session_state:
     st.session_state['selected_indicator'] = None
 if 'ticker_close' not in st.session_state:
@@ -34,8 +32,6 @@ if 'ticker_ath_ts' not in st.session_state:
     st.session_state['ticker_ath_ts'] = "ath timestamp"
 
 st.sidebar.title("⚙️ Configurations")
-col1, col2, col3 = st.sidebar.columns(3)
-col4, col5, col6 = st.sidebar.columns([2,1,3])
 
 crypto_options = ["BTC-USD", "ETH-USD", 'XRP-USD', 
                   "BNB-USD", "SOL-USD", "TRX-USD", 
@@ -48,25 +44,26 @@ crypto_options = ["BTC-USD", "ETH-USD", 'XRP-USD',
                   "POL-USD"]
 interval_options = ["Days", "Hours", "Minutes"]
 range_options = [15, 30, 60, 90, 180]
-indicator_options = ["MA", "EMA"]
+indicator_options = ["VOL", "MA"]
 chart_options = ["Candlestick", "Line", 'OHLC']
 volume_options = ["Volume"]
 
+col1, col2= st.sidebar.columns(2)
+col3, col4, col5 = st.sidebar.columns(3)
+
 with col1:
     st.session_state['selected_crypto'] = st.selectbox("🪙 Crypto", crypto_options)
-with col2:
-    st.session_state['selected_interval'] = st.selectbox("🕒 Interval", interval_options)
 with col3:
-    st.session_state['selected_range'] = st.selectbox("📆 Range", range_options, index=1)
+    st.session_state['selected_interval'] = st.selectbox("🕒 Interval", interval_options)
 with col4:
+    st.session_state['selected_range'] = st.selectbox("📆 Range", range_options, index=1)
+with col2:
     st.session_state['selected_chart'] = st.selectbox("📈 Chart Type", chart_options)
 with col5:
-    st.session_state['show_volume'] = st.pills("", volume_options, selection_mode="single", default='Volume')
-with col6:
-    st.session_state['selected_indicator'] = st.pills("", indicator_options, selection_mode="single", default=None, disabled=st.session_state['selected_chart']=="Line")
+    st.session_state['selected_indicator'] = st.segmented_control("💡 Indicator", indicator_options, selection_mode="multi", default='VOL')
 st.session_state['crypto_symbol'] = st.session_state['selected_crypto'].split('-')[0]
 
-@st.fragment(run_every=TICKER_DURATION)
+@st.fragment()
 def ticker_component():
     ticker_response = requests.get(
         f'https://data-api.coindesk.com/index/cc/v1/latest/tick',
@@ -142,7 +139,7 @@ def ticker_component():
 ticker_component()
 
 
-@st.fragment(run_every=60)
+@st.fragment()
 def chart_component():
     response = requests.get(
         f'https://data-api.coindesk.com/index/cc/v1/historical/{st.session_state['selected_interval'].lower()}',
@@ -181,13 +178,13 @@ def chart_component():
         lambda row: 'green' if row['CLOSE'] > row['OPEN'] else 'red', axis=1
     )
 
-    if st.session_state['show_volume']!=None:
+    if 'VOL'in st.session_state['selected_indicator']:
         fig = make_subplots(
             rows=2, cols=1,
             shared_xaxes=True,
             vertical_spacing=0.00,
             row_heights=[0.85, 0.15],
-            subplot_titles=(f"{st.session_state['selected_crypto']}", '')
+            subplot_titles=(f"", '')
         )
     else:
         fig = make_subplots(
@@ -236,7 +233,7 @@ def chart_component():
             row=1, col=1
         )
 
-    if st.session_state['show_volume']!=None:
+    if "VOL" in st.session_state['selected_indicator']:
         fig.add_trace(
             go.Bar(
                 x=df_show['UTCTIME'],
@@ -250,7 +247,7 @@ def chart_component():
         )
 
     if st.session_state['selected_chart'] == "Candlestick" or st.session_state['selected_chart'] == "OHLC":
-        if st.session_state['selected_indicator'] == "MA":
+        if "MA" in st.session_state['selected_indicator']:
             fig.add_trace(go.Scatter(
                 x=df_show['UTCTIME'],
                 y=df_show['MA7'],
@@ -272,37 +269,16 @@ def chart_component():
                 name='MA(100)',
                 line=dict(color='purple', width=1.5)
             ), row=1, col=1)
-        elif st.session_state['selected_indicator'] == "EMA":
-            fig.add_trace(go.Scatter(
-                x=df_show['UTCTIME'],
-                y=df_show['EMA7'],
-                mode='lines',
-                name='EMA(7)',
-                line=dict(color='orange', width=1.5)
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=df_show['UTCTIME'],
-                y=df_show['EMA50'],
-                mode='lines',
-                name='EMA(50)',
-                line=dict(color='cyan', width=1.5)
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=df_show['UTCTIME'],
-                y=df_show['EMA100'],
-                mode='lines',
-                name='EMA(100)',
-                line=dict(color='purple', width=1.5)
-            ), row=1, col=1)
 
     fig.update_layout(
         template='plotly_dark',
         dragmode=False,
         showlegend=True,
         xaxis_rangeslider_visible=False,
+        margin=dict(t=50, b=120, l=0, r=0),
     )
 
-    if st.session_state['show_volume']!=None:
+    if "VOL" in st.session_state['selected_indicator']:
         fig.update_xaxes(showgrid=True, row=1, col=1)
         fig.update_xaxes(showgrid=True, row=2, col=1)
         fig.update_yaxes(showgrid=False, row=2, col=1)
@@ -317,11 +293,9 @@ chart_component()
 
 # ===== FEAR & GREED INDEX =====
 with st.sidebar:
-    @st.fragment(run_every=TICKER_DURATION)
+    @st.fragment(run_every=5)
     def fng_index():
-        st.divider()
-        st.title("😯 Crypto Market Sentiment")
-        
+        st.divider()        
         fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
         fng_response = requests.get(fng_url)
         fng_data = fng_response.json()['data']
@@ -341,21 +315,65 @@ with st.sidebar:
         yesterday_fng = int(df_fng.iloc[-2]['FNG_VALUE'])
         fng_value =  latest_fng['FNG_VALUE']
         fng_class =  latest_fng['FNG_CLASS']
+        title_badge = ':green-badge[68 GREED]'
+        title_icon = f"😱"
         if fng_class == "Extreme Fear":
-            st.markdown(f":red-badge[📊 Fear & Greed Index: **{fng_value}/100**] :red-badge[😱 Crypto market is in **EXTREME FEAR**]")
+            title_badge = f":red-badge[{fng_value} EXTREME FEAR]"
+            title_icon = f"😱"
         elif fng_class == "Fear":
-            st.markdown(f":red-badge[📊 Fear & Greed Index: **{fng_value}/100**] :red-badge[😟 Crypto market is in **FEAR**]")
+            title_badge = f":red-badge[{fng_value} FEAR]"
+            title_icon = f"😟"
         elif fng_class == "Neutral":
-            st.markdown(f":orange-badge[📊 Fear & Greed Index: **{fng_value}/100**] :orange-badge[😐 Crypto market is **NEUTRAL**]") 
+            title_badge = f":orange-badge[{fng_value} NEUTRAL]"
+            title_icon = f"😐"
         elif fng_class == "Greed":
-            st.markdown(f":green-badge[📊 Fear & Greed Index: **{fng_value}/100**] :green-badge[🙂 Crypto market is in **GREED**]")
+            title_badge = f":green-badge[{fng_value} GREED]"
+            title_icon = f"🙂"
         else:
-            st.markdown(f":green-badge[📊 Fear & Greed Index: **{fng_value}/100**] :green-badge[😎 Crypto market is in EXTREME **GREED**]")
+            title_badge = f":green-badge[{fng_value} EXTREME GREED]"
+            title_icon = f"😄"
 
-        df_fng_chart = df_fng.tail(30)
+        st.title(f"{title_icon} Crypto Market Sentiment {title_badge}")
+
+        df_fng_chart = df_fng.tail(14)
         df_fng_chart = df_fng_chart.set_index('UTCTIME')
         fng_line_data = df_fng_chart[['FNG_VALUE']]
-        st.line_chart(fng_line_data, y_label='F&G Index Value', height=200)
+
+        def get_color(val):
+            if val <= 20:
+                return '#B22222'
+            elif val <= 40:
+                return '#E57373'
+            elif val <= 60:
+                return '#FFEB3B'
+            elif val <= 80:
+                return '#81C784'
+            else:
+                return '#388E3C'
+        df_fng_chart['color'] = df_fng_chart['FNG_VALUE'].apply(get_color)
+        fig = go.Figure(
+            data=[
+                go.Scatter(
+                    x=df_fng_chart.index,
+                    y=df_fng_chart['FNG_VALUE'],
+                    mode='lines+markers',
+                    line=dict(color='white', width=1.5),
+                    marker_color=df_fng_chart['color'],
+                    opacity=0.9,
+                    name='FNG Index'
+                ),
+            ]
+        )
+        fig.update_layout(
+            height=225,
+            title="",
+            yaxis_title="FnG Index Value",
+            xaxis_title="",
+            template="plotly_dark",
+            margin=dict(t=0, b=0, l=0, r=0),
+            dragmode=False,
+        )
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
     fng_index()
 # === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
