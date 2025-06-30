@@ -193,7 +193,7 @@ def chart_component():
         fig = make_subplots(
             rows=1, cols=1,
             shared_xaxes=True,
-            subplot_titles=(st.session_state['selected_crypto'],)
+            subplot_titles=(f"", '')
         )
 
     if st.session_state['selected_chart'] == "Candlestick":
@@ -249,41 +249,40 @@ def chart_component():
             row=2, col=1
         )
 
-    if st.session_state['selected_chart'] == "Candlestick" or st.session_state['selected_chart'] == "OHLC":
-        if "MA" in st.session_state['selected_indicator']:
-            fig.add_trace(go.Scatter(
-                x=df_show['UTCTIME'],
-                y=df_show['MA7'],
-                mode='lines',
-                name='MA(7)',
-                line=dict(color='orange', width=1.5)
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=df_show['UTCTIME'],
-                y=df_show['MA50'],
-                mode='lines',
-                name='MA(50)',
-                line=dict(color='cyan', width=1.5)
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=df_show['UTCTIME'],
-                y=df_show['MA100'],
-                mode='lines',
-                name='MA(100)',
-                line=dict(color='purple', width=1.5)
-            ), row=1, col=1)
-            fig.add_annotation(
-                x=0, y=1.1,
-                xref='paper', yref='paper',
-                showarrow=False,
-                align='left',
-                text=f"<span style='color:orange;'>MA(7): ${ma7}</span> &nbsp; "
-                    f"<span style='color:cyan;'>MA(50): ${ma50}</span> &nbsp; "
-                    f"<span style='color:purple;'>MA(100): ${ma100}</span>",
-                font=dict(size=12),
-                borderpad=4,
-                bgcolor='rgba(0,0,0,0)', 
-            )
+    if "MA" in st.session_state['selected_indicator']:
+        fig.add_trace(go.Scatter(
+            x=df_show['UTCTIME'],
+            y=df_show['MA7'],
+            mode='lines',
+            name='MA(7)',
+            line=dict(color='orange', width=1.5)
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df_show['UTCTIME'],
+            y=df_show['MA50'],
+            mode='lines',
+            name='MA(50)',
+            line=dict(color='cyan', width=1.5)
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df_show['UTCTIME'],
+            y=df_show['MA100'],
+            mode='lines',
+            name='MA(100)',
+            line=dict(color='purple', width=1.5)
+        ), row=1, col=1)
+        fig.add_annotation(
+            x=0, y=1.1,
+            xref='paper', yref='paper',
+            showarrow=False,
+            align='left',
+            text=f"<span style='color:orange;'>MA(7): ${ma7}</span> &nbsp; "
+                f"<span style='color:cyan;'>MA(50): ${ma50}</span> &nbsp; "
+                f"<span style='color:purple;'>MA(100): ${ma100}</span>",
+            font=dict(size=12),
+            borderpad=4,
+            bgcolor='rgba(0,0,0,0)', 
+        )
 
     fig.update_layout(
         template='plotly_dark',
