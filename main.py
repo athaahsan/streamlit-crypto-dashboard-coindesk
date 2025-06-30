@@ -10,6 +10,19 @@ API_KEY = st.secrets["API_KEY"]
 TICKER_DURATION = 10
 
 
+def number_format(value):
+    if value >= 1:
+        return f"{value:,.2f}"
+    else:
+        s = f"{value}"
+        decimal = s.split(".")[1]
+        count = 0
+        for ch in decimal:
+            if ch == '0':
+                count += 1
+            else:
+                break
+        return f"{value:.{count+4}f}"
 
 # ===== FETCHING CRYPTO DATA =====
 if 'selected_crypto' not in st.session_state:
@@ -60,7 +73,7 @@ with col4:
 with col2:
     st.session_state['selected_chart'] = st.selectbox("📈 Chart Type", chart_options)
 with col5:
-    st.session_state['selected_indicator'] = st.segmented_control("💡 Indicator", indicator_options, selection_mode="multi", default='VOL')
+    st.session_state['selected_indicator'] = st.pills("💡 Indicator", indicator_options, selection_mode="multi", default='VOL')
 st.session_state['crypto_symbol'] = st.session_state['selected_crypto'].split('-')[0]
 
 @st.fragment()
@@ -83,20 +96,6 @@ def ticker_component():
     from_ath_change = ((ticker_value - ticker_ath) / ticker_ath) * 100
     st.session_state['ticker_dataframe'] = df_ticker
     st.session_state['ticker_close'] = ticker_value
-
-    def number_format(value):
-        if value >= 1:
-            return f"{value:,.2f}"
-        else:
-            s = f"{value}"
-            decimal = s.split(".")[1]
-            count = 0
-            for ch in decimal:
-                if ch == '0':
-                    count += 1
-                else:
-                    break
-            return f"{value:.{count+4}f}"
 
     ticker_value = number_format(ticker_value)
 
@@ -128,11 +127,11 @@ def ticker_component():
 
     col4, col5, col6, col7 = st.columns(4)
     with col4:
-        st.metric(label="1 week", value="", delta=week_change)
+        st.metric(label="7 days", value="", delta=week_change)
     with col5:
-        st.metric(label="1 month", value="", delta=month_change)
+        st.metric(label="30 days", value="", delta=month_change)
     with col6:
-        st.metric(label="1 year", value="", delta=year_change)
+        st.metric(label="12 months", value="", delta=year_change)
     with col7:
         st.metric(label="From ATH", value="", delta=from_ath_change)
 
@@ -169,12 +168,18 @@ def chart_component():
     df['MA50'] = df['CLOSE'].rolling(window=50).mean()
     df['MA100'] = df['CLOSE'].rolling(window=100).mean()
 
-
     show_range = st.session_state['selected_range']
     df_show = df.tail(show_range)
     df_show['VOLUME_COLOR'] = df_show.apply(
         lambda row: 'green' if row['CLOSE'] > row['OPEN'] else 'red', axis=1
     )
+
+    ma7 = df_show['MA7'].iloc[-1]
+    ma7 = number_format(ma7)
+    ma50 = df_show['MA50'].iloc[-1]
+    ma50 = number_format(ma50) 
+    ma100 = df_show['MA100'].iloc[-1]
+    ma100 = number_format(ma100)
 
     if 'VOL'in st.session_state['selected_indicator']:
         fig = make_subplots(
@@ -267,13 +272,25 @@ def chart_component():
                 name='MA(100)',
                 line=dict(color='purple', width=1.5)
             ), row=1, col=1)
+            fig.add_annotation(
+                x=0, y=1.1,
+                xref='paper', yref='paper',
+                showarrow=False,
+                align='left',
+                text=f"<span style='color:orange;'>MA(7): ${ma7}</span> &nbsp; "
+                    f"<span style='color:cyan;'>MA(50): ${ma50}</span> &nbsp; "
+                    f"<span style='color:purple;'>MA(100): ${ma100}</span>",
+                font=dict(size=12),
+                borderpad=4,
+                bgcolor='rgba(0,0,0,0)',  # transparan
+            )
 
     fig.update_layout(
         template='plotly_dark',
         dragmode=False,
-        showlegend=True,
+        showlegend=False,
         xaxis_rangeslider_visible=False,
-        margin=dict(t=50, b=120, l=0, r=0),
+        margin=dict(t=50, b=100, l=0, r=0),
     )
 
     if "VOL" in st.session_state['selected_indicator']:
@@ -294,7 +311,7 @@ with st.sidebar:
     @st.fragment(run_every=5)
     def fng_index():
         st.divider()        
-        fng_url = "https://api.alternative.me/fng/?limit=10&format=json"
+        fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
         fng_response = requests.get(fng_url)
         fng_data = fng_response.json()['data']
 
@@ -313,27 +330,27 @@ with st.sidebar:
         yesterday_fng = int(df_fng.iloc[-2]['FNG_VALUE'])
         fng_value =  latest_fng['FNG_VALUE']
         fng_class =  latest_fng['FNG_CLASS']
-        title_badge = ':green-badge[68 GREED]'
+        title_badge = ':green-badge[68 - GREED]'
         title_icon = f"😱"
         if fng_class == "Extreme Fear":
-            title_badge = f":red-badge[{fng_value} EXTREME FEAR]"
+            title_badge = f":red-badge[{fng_value} - EXTREME FEAR]"
             title_icon = f"😱"
         elif fng_class == "Fear":
-            title_badge = f":red-badge[{fng_value} FEAR]"
+            title_badge = f":red-badge[{fng_value} - FEAR]"
             title_icon = f"😟"
         elif fng_class == "Neutral":
-            title_badge = f":orange-badge[{fng_value} NEUTRAL]"
+            title_badge = f":orange-badge[{fng_value} - NEUTRAL]"
             title_icon = f"😐"
         elif fng_class == "Greed":
-            title_badge = f":green-badge[{fng_value} GREED]"
+            title_badge = f":green-badge[{fng_value} - GREED]"
             title_icon = f"🙂"
         else:
-            title_badge = f":green-badge[{fng_value} EXTREME GREED]"
+            title_badge = f":green-badge[{fng_value} - EXTREME GREED]"
             title_icon = f"😄"
 
         st.title(f"{title_icon} Crypto Market Sentiment {title_badge}")
 
-        df_fng_chart = df_fng.tail(7)
+        df_fng_chart = df_fng.tail(30)
         df_fng_chart = df_fng_chart.set_index('UTCTIME')
         fng_line_data = df_fng_chart[['FNG_VALUE']]
 
@@ -356,14 +373,14 @@ with st.sidebar:
                     y=df_fng_chart['FNG_VALUE'],
                     mode='lines+markers',
                     line=dict(color='white', width=1.5),
-                    marker_color=df_fng_chart['color'],
+                    marker=dict(color=df_fng_chart['color'], size=4),
                     opacity=0.9,
                     name='FNG Index'
                 ),
             ]
         )
         fig.update_layout(
-            height=225,
+            height=240,
             title="",
             yaxis_title="FnG Index Value",
             xaxis_title="",
