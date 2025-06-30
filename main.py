@@ -73,7 +73,7 @@ with col4:
 with col2:
     st.session_state['selected_chart'] = st.selectbox("📈 Chart Type", chart_options)
 with col5:
-    st.session_state['selected_indicator'] = st.pills("💡 Indicator", indicator_options, selection_mode="multi", default='VOL')
+    st.session_state['selected_indicator'] = st.segmented_control("💡 Indicator", indicator_options, selection_mode="multi", default='VOL')
 st.session_state['crypto_symbol'] = st.session_state['selected_crypto'].split('-')[0]
 
 @st.fragment()
@@ -352,7 +352,7 @@ with st.sidebar:
             title_badge = f":green-badge[{fng_value} - EXTREME GREED]"
             title_icon = f"😄"
 
-        st.title(f"{title_icon} Crypto Market Sentiment {title_badge}")
+        st.title(f"{title_icon} Crypto Fear & Greed Index {title_badge}")
 
         df_fng_chart = df_fng.tail(30)
         df_fng_chart = df_fng_chart.set_index('UTCTIME')
@@ -376,7 +376,7 @@ with st.sidebar:
                     x=df_fng_chart.index,
                     y=df_fng_chart['FNG_VALUE'],
                     mode='lines+markers',
-                    line=dict(color='white', width=1.5),
+                    line=dict(color='white', width=1.5, shape='spline'),
                     marker=dict(color=df_fng_chart['color'], size=4),
                     opacity=0.9,
                     name='FNG Index'
@@ -386,7 +386,7 @@ with st.sidebar:
         fig.update_layout(
             height=245,
             title="",
-            yaxis_title="FnG Index Value",
+            yaxis_title="F&G Index Value",
             xaxis_title="",
             template="plotly_dark",
             margin=dict(t=0, b=0, l=0, r=0),
