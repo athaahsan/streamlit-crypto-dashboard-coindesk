@@ -61,7 +61,7 @@ indicator_options = ["VOL", "MA"]
 chart_options = ["Candlestick", "Line", 'OHLC']
 volume_options = ["Volume"]
 
-col1, col2= st.sidebar.columns(2)
+col1, col2 = st.sidebar.columns(2)
 col3, col4, col5 = st.sidebar.columns(3)
 
 with col1:
@@ -282,7 +282,7 @@ def chart_component():
                     f"<span style='color:purple;'>MA(100): ${ma100}</span>",
                 font=dict(size=12),
                 borderpad=4,
-                bgcolor='rgba(0,0,0,0)',  # transparan
+                bgcolor='rgba(0,0,0,0)', 
             )
 
     fig.update_layout(
@@ -290,7 +290,12 @@ def chart_component():
         dragmode=False,
         showlegend=False,
         xaxis_rangeslider_visible=False,
-        margin=dict(t=50, b=100, l=0, r=0),
+        margin=dict(
+            t=69 if "MA" in st.session_state['selected_indicator'] else 50, 
+            b=100, 
+            l=0, 
+            r=0
+            ),
     )
 
     if "VOL" in st.session_state['selected_indicator']:
@@ -380,7 +385,7 @@ with st.sidebar:
             ]
         )
         fig.update_layout(
-            height=240,
+            height=245,
             title="",
             yaxis_title="FnG Index Value",
             xaxis_title="",
