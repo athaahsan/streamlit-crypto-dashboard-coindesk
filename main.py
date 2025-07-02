@@ -117,7 +117,7 @@ def ticker_component():
 
     col1, col2, col3 = st.columns(3, vertical_alignment='top')
     with col1:
-        st.metric(label=st.session_state['crypto_symbol'], value=f"${ticker_value}", delta=f"{day_change} (24h)")
+        st.metric(label=st.session_state['crypto_symbol'], value=f"${ticker_value}", delta=f"{day_change} (Today)")
     with col2:
         st.metric(label=f"ATH ({ticker_ath_ts})", value=f'${ticker_ath}')
     with col3:
@@ -127,13 +127,13 @@ def ticker_component():
 
     col4, col5, col6, col7 = st.columns(4)
     with col4:
-        st.metric(label="7 days", value="", delta=week_change)
+        st.metric(label="Week to Date", value="", delta=week_change)
     with col5:
-        st.metric(label="30 days", value="", delta=month_change)
+        st.metric(label="Month to Date", value="", delta=month_change)
     with col6:
-        st.metric(label="12 months", value="", delta=year_change)
+        st.metric(label="Year to Date", value="", delta=year_change)
     with col7:
-        st.metric(label="From ATH", value="", delta=from_ath_change)
+        st.metric(label="Since ATH", value="", delta=from_ath_change)
 
 ticker_component()
 
@@ -312,7 +312,7 @@ chart_component()
 
 # ===== FEAR & GREED INDEX =====
 with st.sidebar:
-    @st.fragment(run_every=5)
+    @st.fragment(run_every=3)
     def fng_index():
         st.divider()        
         fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
