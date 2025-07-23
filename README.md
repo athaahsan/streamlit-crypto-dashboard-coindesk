@@ -11,3 +11,8 @@ This project is a cryptocurrency dashboard that visualizes real-time market data
 
 - **CoinDesk Index API**: Real-time and historical pricing data.
 - **Alternative.me Fear & Greed Index API**: Market sentiment data based on multiple sources.
+
+## Live Demo
+
+This project is hosted using Streamlit and can be accessed here:  
+👉 **[https://atha-crypto-dashboard.streamlit.app/](https://atha-crypto-dashboard.streamlit.app/)**  
