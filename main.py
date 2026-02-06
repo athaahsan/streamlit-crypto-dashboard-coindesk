@@ -43,6 +43,19 @@ if 'ticker_dataframe' not in st.session_state:
     st.session_state['ticker_dataframe'] = pd.DataFrame()
 if 'ticker_ath_ts' not in st.session_state:
     st.session_state['ticker_ath_ts'] = "ath timestamp"
+if "indicator_widget" not in st.session_state:
+    st.session_state["indicator_widget"] = ["VOL"]
+
+def enforce_indicator_rules():
+    indicators = list(st.session_state["indicator_widget"])
+    if "MA" in indicators and "EMA" in indicators:
+        last = indicators[-1]
+        if last == "MA":
+            indicators.remove("EMA")
+        else:
+            indicators.remove("MA")
+        st.session_state["indicator_widget"] = indicators
+
 
 st.sidebar.title("⚙️ Configurations")
 
@@ -57,23 +70,33 @@ crypto_options = ["BTC-USD", "ETH-USD", 'XRP-USD',
                   "POL-USD"]
 interval_options = ["Days", "Hours", "Minutes"]
 range_options = [15, 30, 60, 90, 180]
-indicator_options = ["VOL", "MA"]
+indicator_options = ["VOL", "MA", "EMA"]
 chart_options = ["Candlestick", "Line", 'OHLC']
 volume_options = ["Volume"]
 
-col1, col2 = st.sidebar.columns(2)
-col3, col4, col5 = st.sidebar.columns(3)
+col1, col2, col3 = st.sidebar.columns(3)
+col4, col5 = st.sidebar.columns(2)
 
 with col1:
     st.session_state['selected_crypto'] = st.selectbox("🪙 Crypto", crypto_options)
-with col3:
-    st.session_state['selected_interval'] = st.selectbox("🕒 Interval", interval_options)
-with col4:
-    st.session_state['selected_range'] = st.selectbox("📆 Range", range_options, index=1)
 with col2:
+    st.session_state['selected_interval'] = st.selectbox("🕒 Interval", interval_options)
+with col3:
+    st.session_state['selected_range'] = st.selectbox("📆 Range", range_options, index=1)
+with col4:
     st.session_state['selected_chart'] = st.selectbox("📈 Chart Type", chart_options)
 with col5:
-    st.session_state['selected_indicator'] = st.segmented_control("💡 Indicator", indicator_options, selection_mode="multi", default='VOL')
+    st.segmented_control(
+        "💡 Indicator",
+        indicator_options,
+        selection_mode="multi",
+        key="indicator_widget",
+        on_change=enforce_indicator_rules
+)
+
+
+st.session_state["selected_indicator"] = list(st.session_state["indicator_widget"])
+
 st.session_state['crypto_symbol'] = st.session_state['selected_crypto'].split('-')[0]
 
 @st.fragment()
@@ -167,6 +190,10 @@ def chart_component():
     df['MA7'] = df['CLOSE'].rolling(window=7).mean()
     df['MA50'] = df['CLOSE'].rolling(window=50).mean()
     df['MA100'] = df['CLOSE'].rolling(window=100).mean()
+    df['EMA7'] = df['CLOSE'].ewm(span=7, adjust=False).mean()
+    df['EMA50'] = df['CLOSE'].ewm(span=50, adjust=False).mean()
+    df['EMA100'] = df['CLOSE'].ewm(span=100, adjust=False).mean()
+
 
     show_range = st.session_state['selected_range']
     df_show = df.tail(show_range)
@@ -180,6 +207,13 @@ def chart_component():
     ma50 = number_format(ma50) 
     ma100 = df_show['MA100'].iloc[-1]
     ma100 = number_format(ma100)
+    
+    ema7 = df_show['EMA7'].iloc[-1]
+    ema7 = number_format(ema7)
+    ema50 = df_show['EMA50'].iloc[-1]
+    ema50 = number_format(ema50) 
+    ema100 = df_show['EMA100'].iloc[-1]
+    ema100 = number_format(ema100)
 
     if 'VOL'in st.session_state['selected_indicator']:
         fig = make_subplots(
@@ -283,6 +317,42 @@ def chart_component():
             borderpad=4,
             bgcolor='rgba(0,0,0,0)', 
         )
+        
+    if "EMA" in st.session_state['selected_indicator']:
+        fig.add_trace(go.Scatter(
+            x=df_show['UTCTIME'],
+            y=df_show['EMA7'],
+            mode='lines',
+            name='EMA(7)',
+            line=dict(color='orange', width=1.5)
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df_show['UTCTIME'],
+            y=df_show['EMA50'],
+            mode='lines',
+            name='EMA(50)',
+            line=dict(color='cyan', width=1.5)
+        ), row=1, col=1)
+        fig.add_trace(go.Scatter(
+            x=df_show['UTCTIME'],
+            y=df_show['EMA100'],
+            mode='lines',
+            name='EMA(100)',
+            line=dict(color='purple', width=1.5)
+        ), row=1, col=1)
+        fig.add_annotation(
+            x=0, y=1.1,
+            xref='paper', yref='paper',
+            showarrow=False,
+            align='left',
+            text=f"<span style='color:orange;'>EMA(7): ${ema7}</span> &nbsp; "
+                f"<span style='color:cyan;'>EMA(50): ${ema50}</span> &nbsp; "
+                f"<span style='color:purple;'>EMA(100): ${ema100}</span>",
+            font=dict(size=12),
+            borderpad=4,
+            bgcolor='rgba(0,0,0,0)', 
+        )
+
 
     fig.update_layout(
         template='plotly_dark',
@@ -290,7 +360,7 @@ def chart_component():
         showlegend=False,
         xaxis_rangeslider_visible=False,
         margin=dict(
-            t=69 if "MA" in st.session_state['selected_indicator'] else 50, 
+            t=69 if any(i in st.session_state['selected_indicator'] for i in ["MA", "EMA"]) else 50, 
             b=100, 
             l=0, 
             r=0
@@ -312,7 +382,7 @@ chart_component()
 
 # ===== FEAR & GREED INDEX =====
 with st.sidebar:
-    @st.fragment(run_every=3)
+    @st.fragment()
     def fng_index():
         st.divider()        
         fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
@@ -376,7 +446,7 @@ with st.sidebar:
                     x=df_fng_chart.index,
                     y=df_fng_chart['FNG_VALUE'],
                     mode='lines+markers',
-                    line=dict(color='white', width=1.5, shape='spline'),
+                    line=dict(color='gray', width=1.5, shape='spline'),
                     marker=dict(color=df_fng_chart['color'], size=4),
                     opacity=0.9,
                     name='FNG Index'
