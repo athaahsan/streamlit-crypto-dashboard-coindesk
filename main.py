@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 import pandas as pd
 import requests
@@ -8,6 +9,31 @@ from plotly.subplots import make_subplots
 
 API_KEY = st.secrets["API_KEY"]
 TICKER_DURATION = 10
+
+
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+
+    gain = delta.clip(lower=0)
+    loss = -delta.clip(upper=0)
+
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def calculate_macd(series, fast=12, slow=26, signal=9):
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+
+    macd_histogram = macd_line - signal_line
+
+    return macd_line, signal_line, macd_histogram
 
 
 def number_format(value):
@@ -23,8 +49,112 @@ def number_format(value):
             else:
                 break
         return f"{value:.{count+4}f}"
+    
+
+def enforce_indicator_rules():
+    indicators = list(st.session_state["indicator_widget"])
+    if "MA" in indicators and "EMA" in indicators:
+        last = indicators[-1]
+        if last == "MA":
+            indicators.remove("EMA")
+        else:
+            indicators.remove("MA")
+        st.session_state["indicator_widget"] = indicators
+
+
+SYSTEM_PROMPT = """
+You are a professional crypto technical analyst.
+
+STRICT RULES:
+- Analyze ONLY provided data
+- Do NOT assume external market context
+"""
+
+
+def build_user_prompt(payload):
+    return f"""
+You are analyzing crypto technical indicators on the DAILY timeframe.
+
+Rules:
+- buy_confidence + hold_confidence + sell_confidence MUST sum to 1.0
+- Higher value means stronger bias.
+
+Context:
+- Indicators derived from daily candles
+- Latest candle contains live market tick
+- Use EMA alignment, RSI momentum, MACD histogram trend, and Fear & Greed sentiment.
+
+Technical data:
+{payload}
+"""
+
+
+
+def get_ai_insight():
+    url = "https://openrouter.ai/api/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {st.secrets['OPENROUTER_API_KEY']}",
+        "Content-Type": "application/json"
+    }
+
+    body = {
+        "model": "google/gemini-3-flash-preview",
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": build_user_prompt(st.session_state["technical_payload"])}
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "crypto_analysis",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "buy_confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "description": "Probability score favoring a buy decision."
+                        },
+                        "hold_confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "description": "Probability score favoring a hold decision."
+                        },
+                        "sell_confidence": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1,
+                            "description": "Probability score favoring a sell decision."
+                        },
+                        "reasoning": {
+                            "type": "string",
+                            "description": "Brief technical explanation supporting the dominant decision. Keep it concise and signal-focused."
+                        }
+                    },
+                    "required": ["buy_confidence","hold_confidence","sell_confidence","reasoning"],
+                    "additionalProperties": False
+                }
+            }
+        }
+    }
+
+    res = requests.post(url, headers=headers, json=body)
+    return res.json()
+
+
+
 
 # ===== FETCHING CRYPTO DATA =====
+if "ai_loading" not in st.session_state:
+    st.session_state.ai_loading = False
+if "ai_result" not in st.session_state:
+    st.session_state.ai_result = None
+if "show_ai_result" not in st.session_state:
+    st.session_state.show_ai_result = False
 if 'selected_crypto' not in st.session_state:
     st.session_state['selected_crypto'] = 'BTC-USD'
 if 'crypto_symbol' not in st.session_state:
@@ -45,17 +175,6 @@ if 'ticker_ath_ts' not in st.session_state:
     st.session_state['ticker_ath_ts'] = "ath timestamp"
 if "indicator_widget" not in st.session_state:
     st.session_state["indicator_widget"] = ["VOL"]
-
-def enforce_indicator_rules():
-    indicators = list(st.session_state["indicator_widget"])
-    if "MA" in indicators and "EMA" in indicators:
-        last = indicators[-1]
-        if last == "MA":
-            indicators.remove("EMA")
-        else:
-            indicators.remove("MA")
-        st.session_state["indicator_widget"] = indicators
-
 
 st.sidebar.title("⚙️ Configurations")
 
@@ -94,10 +213,16 @@ with col5:
         on_change=enforce_indicator_rules
 )
 
-
 st.session_state["selected_indicator"] = list(st.session_state["indicator_widget"])
 
 st.session_state['crypto_symbol'] = st.session_state['selected_crypto'].split('-')[0]
+# Reset AI result when settings change (full rerun)
+if st.session_state.get("_last_crypto") != st.session_state['selected_crypto']:
+    st.session_state.show_ai_result = False
+    st.session_state.ai_result = None
+
+st.session_state["_last_crypto"] = st.session_state['selected_crypto']
+
 
 @st.fragment()
 def ticker_component():
@@ -159,8 +284,101 @@ def ticker_component():
         st.metric(label="Since ATH", value="", delta=from_ath_change)
 
 ticker_component()
+# === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
+ 
 
 
+# ===== FEAR & GREED INDEX =====
+with st.sidebar:
+    @st.fragment()
+    def fng_index():
+        st.divider()        
+        fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
+        fng_response = requests.get(fng_url)
+        fng_data = fng_response.json()['data']
+
+        df_fng = pd.DataFrame(fng_data)
+        df_fng.rename(
+            columns={
+                'value': 'FNG_VALUE',
+                'value_classification': 'FNG_CLASS'
+            }, 
+            inplace=True)
+        df_fng['FNG_VALUE'] = pd.to_numeric(df_fng['FNG_VALUE'])
+        df_fng['UTCTIME'] = pd.to_datetime(df_fng['timestamp'].astype(int), unit='s')
+        df_fng = df_fng.sort_values(by='UTCTIME').reset_index(drop=True)
+
+        latest_fng = df_fng.iloc[-1]
+        yesterday_fng = int(df_fng.iloc[-2]['FNG_VALUE'])
+        fng_value =  latest_fng['FNG_VALUE']
+        fng_class =  latest_fng['FNG_CLASS']
+        st.session_state["crypto_fng_value"] = int(fng_value)
+        st.session_state["crypto_fng_class"] = fng_class
+        title_badge = ':green-badge[68 - GREED]'
+        title_icon = f"😱"
+        if fng_class == "Extreme Fear":
+            title_badge = f":red-badge[{fng_value} - EXTREME FEAR]"
+            title_icon = f"😱"
+        elif fng_class == "Fear":
+            title_badge = f":red-badge[{fng_value} - FEAR]"
+            title_icon = f"😟"
+        elif fng_class == "Neutral":
+            title_badge = f":orange-badge[{fng_value} - NEUTRAL]"
+            title_icon = f"😐"
+        elif fng_class == "Greed":
+            title_badge = f":green-badge[{fng_value} - GREED]"
+            title_icon = f"🙂"
+        else:
+            title_badge = f":green-badge[{fng_value} - EXTREME GREED]"
+            title_icon = f"😄"
+
+        st.title(f"{title_icon} Crypto Fear & Greed Index {title_badge}")
+
+        df_fng_chart = df_fng.tail(30)
+        df_fng_chart = df_fng_chart.set_index('UTCTIME')
+        fng_line_data = df_fng_chart[['FNG_VALUE']]
+
+        def get_color(val):
+            if val <= 20:
+                return '#B22222'
+            elif val <= 40:
+                return '#E57373'
+            elif val <= 60:
+                return '#FFEB3B'
+            elif val <= 80:
+                return '#81C784'
+            else:
+                return '#388E3C'
+        df_fng_chart['color'] = df_fng_chart['FNG_VALUE'].apply(get_color)
+        fig = go.Figure(
+            data=[
+                go.Scatter(
+                    x=df_fng_chart.index,
+                    y=df_fng_chart['FNG_VALUE'],
+                    mode='lines+markers',
+                    line=dict(color='gray', width=1.5, shape='spline'),
+                    marker=dict(color=df_fng_chart['color'], size=4),
+                    opacity=0.9,
+                    name='FNG Index'
+                ),
+            ]
+        )
+        fig.update_layout(
+            height=245,
+            title="",
+            yaxis_title="F&G Index Value",
+            xaxis_title="",
+            template="plotly_dark",
+            margin=dict(t=0, b=0, l=0, r=0),
+            dragmode=False,
+        )
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+    fng_index()
+# === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
+
+
+# ===== CRYPTO CHART =====
 @st.fragment()
 def chart_component():
     response = requests.get(
@@ -193,6 +411,10 @@ def chart_component():
     df['EMA7'] = df['CLOSE'].ewm(span=7, adjust=False).mean()
     df['EMA50'] = df['CLOSE'].ewm(span=50, adjust=False).mean()
     df['EMA100'] = df['CLOSE'].ewm(span=100, adjust=False).mean()
+    df['RSI14'] = calculate_rsi(df['CLOSE'], 14)
+    df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = calculate_macd(df['CLOSE'])
+
+
 
 
     show_range = st.session_state['selected_range']
@@ -200,6 +422,22 @@ def chart_component():
     df_show['VOLUME_COLOR'] = df_show.apply(
         lambda row: 'green' if row['CLOSE'] > row['OPEN'] else 'red', axis=1
     )
+    technical_payload = {
+        "source": "coindesk",
+        "market": "cadli",
+        "instrument": st.session_state['selected_crypto'],
+        "price_last_14": df['CLOSE'].tail(14).tolist(),
+        "ema_20_last_14": df['CLOSE'].ewm(span=20, adjust=False).mean().tail(14).tolist(),
+        "ema_50_last_14": df['EMA50'].tail(14).tolist(),
+        "ema_100_last_14": df['EMA100'].tail(14).tolist(),
+        "rsi_14_last_7": df['RSI14'].tail(7).tolist(),
+        "macd_histogram_last_7": df['MACD_HIST'].tail(7).tolist(),
+        "crypto_fng_value": st.session_state.get("crypto_fng_value"),
+        "crypto_fng_class": st.session_state.get("crypto_fng_class")
+    }
+
+    st.session_state["technical_payload"] = technical_payload
+
 
     ma7 = df_show['MA7'].iloc[-1]
     ma7 = number_format(ma7)
@@ -380,89 +618,47 @@ chart_component()
 # === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
 
 
-# ===== FEAR & GREED INDEX =====
-with st.sidebar:
-    @st.fragment()
-    def fng_index():
-        st.divider()        
-        fng_url = "https://api.alternative.me/fng/?limit=30&format=json"
-        fng_response = requests.get(fng_url)
-        fng_data = fng_response.json()['data']
 
-        df_fng = pd.DataFrame(fng_data)
-        df_fng.rename(
-            columns={
-                'value': 'FNG_VALUE',
-                'value_classification': 'FNG_CLASS'
-            }, 
-            inplace=True)
-        df_fng['FNG_VALUE'] = pd.to_numeric(df_fng['FNG_VALUE'])
-        df_fng['UTCTIME'] = pd.to_datetime(df_fng['timestamp'].astype(int), unit='s')
-        df_fng = df_fng.sort_values(by='UTCTIME').reset_index(drop=True)
+# ===== AI INSIGHTS =====
+@st.fragment()
+def ai_panel():
+    st.subheader(f"✨ AI Insights for {st.session_state['selected_crypto']} on Daily Timeframe")
 
-        latest_fng = df_fng.iloc[-1]
-        yesterday_fng = int(df_fng.iloc[-2]['FNG_VALUE'])
-        fng_value =  latest_fng['FNG_VALUE']
-        fng_class =  latest_fng['FNG_CLASS']
-        title_badge = ':green-badge[68 - GREED]'
-        title_icon = f"😱"
-        if fng_class == "Extreme Fear":
-            title_badge = f":red-badge[{fng_value} - EXTREME FEAR]"
-            title_icon = f"😱"
-        elif fng_class == "Fear":
-            title_badge = f":red-badge[{fng_value} - FEAR]"
-            title_icon = f"😟"
-        elif fng_class == "Neutral":
-            title_badge = f":orange-badge[{fng_value} - NEUTRAL]"
-            title_icon = f"😐"
-        elif fng_class == "Greed":
-            title_badge = f":green-badge[{fng_value} - GREED]"
-            title_icon = f"🙂"
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("AI Input Payload:")
+        st.json(st.session_state["technical_payload"], expanded=1)
+
+    with col2:
+        st.markdown("AI Analysis Result:")
+        if not st.session_state.show_ai_result:
+            if st.button("✨ Generate", disabled=st.session_state.ai_loading):
+                st.session_state.ai_loading = True
+
+                with st.spinner("Generating AI insight..."):
+                    raw = get_ai_insight()
+
+                    ai_json = json.loads(
+                        raw["choices"][0]["message"]["content"]
+                    )
+
+                    st.session_state.ai_result = {
+                        "llm": raw.get("model"),
+                        **ai_json
+                    }
+
+                st.session_state.ai_loading = False
+                st.session_state.show_ai_result = True
+                st.rerun()
+
         else:
-            title_badge = f":green-badge[{fng_value} - EXTREME GREED]"
-            title_icon = f"😄"
+            if st.session_state.ai_result:
+                st.json(st.session_state.ai_result, expanded=1)
 
-        st.title(f"{title_icon} Crypto Fear & Greed Index {title_badge}")
 
-        df_fng_chart = df_fng.tail(30)
-        df_fng_chart = df_fng_chart.set_index('UTCTIME')
-        fng_line_data = df_fng_chart[['FNG_VALUE']]
+if st.session_state['selected_interval'] == "Days":
+    ai_panel()
 
-        def get_color(val):
-            if val <= 20:
-                return '#B22222'
-            elif val <= 40:
-                return '#E57373'
-            elif val <= 60:
-                return '#FFEB3B'
-            elif val <= 80:
-                return '#81C784'
-            else:
-                return '#388E3C'
-        df_fng_chart['color'] = df_fng_chart['FNG_VALUE'].apply(get_color)
-        fig = go.Figure(
-            data=[
-                go.Scatter(
-                    x=df_fng_chart.index,
-                    y=df_fng_chart['FNG_VALUE'],
-                    mode='lines+markers',
-                    line=dict(color='gray', width=1.5, shape='spline'),
-                    marker=dict(color=df_fng_chart['color'], size=4),
-                    opacity=0.9,
-                    name='FNG Index'
-                ),
-            ]
-        )
-        fig.update_layout(
-            height=245,
-            title="",
-            yaxis_title="F&G Index Value",
-            xaxis_title="",
-            template="plotly_dark",
-            margin=dict(t=0, b=0, l=0, r=0),
-            dragmode=False,
-        )
-        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
-    fng_index()
 # === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
