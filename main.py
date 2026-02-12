@@ -2,13 +2,17 @@ import json
 import streamlit as st
 import pandas as pd
 import requests
-import time
 import plotly.graph_objects as go
 from datetime import datetime
 from plotly.subplots import make_subplots
 
-API_KEY = st.secrets["API_KEY"]
+st.set_page_config(layout="wide")
+
+COINDESK_API_KEY = st.secrets["COINDESK_API_KEY"]
 TICKER_DURATION = 10
+
+def r4(x):
+    return float(round(float(x), 4))
 
 
 def calculate_rsi(series, period=14):
@@ -17,12 +21,14 @@ def calculate_rsi(series, period=14):
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
-    avg_gain = gain.rolling(window=period).mean()
-    avg_loss = loss.rolling(window=period).mean()
+    avg_gain = gain.ewm(alpha=1/period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/period, adjust=False).mean()
 
     rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
+
     return rsi
+
 
 def calculate_macd(series, fast=12, slow=26, signal=9):
     ema_fast = series.ewm(span=fast, adjust=False).mean()
@@ -34,6 +40,35 @@ def calculate_macd(series, fast=12, slow=26, signal=9):
     macd_histogram = macd_line - signal_line
 
     return macd_line, signal_line, macd_histogram
+
+
+def calculate_adx(high, low, close, period=14):
+
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(0.0, index=high.index)
+    minus_dm = pd.Series(0.0, index=high.index)
+
+    plus_dm[(up_move > down_move) & (up_move > 0)] = up_move
+    minus_dm[(down_move > up_move) & (down_move > 0)] = down_move
+
+    tr1 = high - low
+    tr2 = (high - close.shift()).abs()
+    tr3 = (low - close.shift()).abs()
+
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+    atr = tr.ewm(alpha=1/period, adjust=False).mean()
+
+    plus_di = 100 * (plus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+    minus_di = 100 * (minus_dm.ewm(alpha=1/period, adjust=False).mean() / atr)
+
+    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    adx = dx.ewm(alpha=1/period, adjust=False).mean()
+
+    return adx, plus_di, minus_di
+
 
 
 def number_format(value):
@@ -68,6 +103,7 @@ You are a professional crypto technical analyst.
 STRICT RULES:
 - Analyze ONLY provided data
 - Do NOT assume external market context
+- Be consistent and deterministic in reasoning.
 """
 
 
@@ -75,18 +111,41 @@ def build_user_prompt(payload):
     return f"""
 You are analyzing crypto technical indicators on the DAILY timeframe.
 
-Rules:
+OUTPUT RULES:
 - buy_confidence + hold_confidence + sell_confidence MUST sum to 1.0
-- Higher value means stronger bias.
+- Higher value = stronger directional bias.
 
-Context:
-- Indicators derived from daily candles
-- Latest candle contains live market tick
-- Use EMA alignment, RSI momentum, MACD histogram trend, and Fear & Greed sentiment.
+DATA STRUCTURE:
+- Any field ending with `_last_N` is a LIST ordered chronologically.
+- The FIRST element is the OLDEST value.
+- The LAST element is the MOST RECENT value.
 
-Technical data:
+PAYLOAD FIELD DESCRIPTIONS:
+- price_last_14: Closing prices of the last 14 daily candles ordered chronologically.
+- ema_20: Latest EMA(20) value representing short-term trend baseline.
+- ema_50: Latest EMA(50) value representing mid-term trend baseline.
+- ema_100: Latest EMA(100) value representing long-term trend baseline.
+- price_vs_ema20_percent: Percentage distance between latest price and EMA(20); positive means price above trend.
+- price_vs_ema50_percent: Percentage distance between latest price and EMA(50); positive means price above trend.
+- price_vs_ema100_percent: Percentage distance between latest price and EMA(100); positive means price above trend.
+- rsi_14_last_7: RSI(14) values from the last 7 candles showing momentum progression.
+- macd_histogram_12_26_9_last_7: MACD histogram values showing recent momentum acceleration or deceleration.
+- adx_14: ADX(14) value indicating current trend strength regardless of direction.
+- positive_di_14: Positive directional index measuring bullish directional pressure.
+- negative_di_14: Negative directional index measuring bearish directional pressure.
+- di_delta_14: Difference between positive_di_14 and negative_di_14 indicating directional dominance.
+- crypto_fng_value: Current Fear & Greed Index numerical sentiment value.
+- crypto_fng_class: Text classification of Fear & Greed sentiment state.
+
+CONTEXT:
+- Indicators derived from daily candles.
+- Latest candle contains live market tick update.
+- Use ONLY provided values.
+
+TECHNICAL PAYLOAD:
 {payload}
 """
+
 
 
 
@@ -233,7 +292,7 @@ def ticker_component():
             "instruments": {st.session_state['selected_crypto']},
             "apply_mapping": "true",
             "response_format": "JSON",
-            "api_key": API_KEY
+            "api_key": COINDESK_API_KEY
         },
         headers={"Content-type": "application/json; charset=UTF-8"}
     )
@@ -391,7 +450,7 @@ def chart_component():
             "fill": "true",
             "apply_mapping": "true",
             "response_format": "JSON",
-            "api_key": API_KEY
+            "api_key": COINDESK_API_KEY
         },
         headers={"Content-type": "application/json; charset=UTF-8"}
     )
@@ -409,10 +468,12 @@ def chart_component():
     df['MA50'] = df['CLOSE'].rolling(window=50).mean()
     df['MA100'] = df['CLOSE'].rolling(window=100).mean()
     df['EMA7'] = df['CLOSE'].ewm(span=7, adjust=False).mean()
+    df['EMA20'] = df['CLOSE'].ewm(span=20, adjust=False).mean()
     df['EMA50'] = df['CLOSE'].ewm(span=50, adjust=False).mean()
     df['EMA100'] = df['CLOSE'].ewm(span=100, adjust=False).mean()
     df['RSI14'] = calculate_rsi(df['CLOSE'], 14)
     df['MACD'], df['MACD_SIGNAL'], df['MACD_HIST'] = calculate_macd(df['CLOSE'])
+    df['ADX14'], df['PLUS_DI14'], df['MINUS_DI14'] = calculate_adx(df['HIGH'], df['LOW'], df['CLOSE'], 14)
 
 
 
@@ -422,19 +483,32 @@ def chart_component():
     df_show['VOLUME_COLOR'] = df_show.apply(
         lambda row: 'green' if row['CLOSE'] > row['OPEN'] else 'red', axis=1
     )
+    
+    last_close = df['CLOSE'].iloc[-1]
+    ema20_last = df['EMA20'].iloc[-1]
+    ema50_last = df['EMA50'].iloc[-1]
+    ema100_last = df['EMA100'].iloc[-1]
+
     technical_payload = {
-        "source": "coindesk",
-        "market": "cadli",
+        "source": "coindesk", 
         "instrument": st.session_state['selected_crypto'],
-        "price_last_14": df['CLOSE'].tail(14).tolist(),
-        "ema_20_last_14": df['CLOSE'].ewm(span=20, adjust=False).mean().tail(14).tolist(),
-        "ema_50_last_14": df['EMA50'].tail(14).tolist(),
-        "ema_100_last_14": df['EMA100'].tail(14).tolist(),
-        "rsi_14_last_7": df['RSI14'].tail(7).tolist(),
-        "macd_histogram_last_7": df['MACD_HIST'].tail(7).tolist(),
+        "price_last_14": [r4(v) for v in df['CLOSE'].tail(14).tolist()],
+        "ema_20": r4(ema20_last),
+        "ema_50": r4(ema50_last),
+        "ema_100": r4(ema100_last),
+        "price_vs_ema20_percent": r4(((last_close - ema20_last) / ema20_last) * 100),
+        "price_vs_ema50_percent": r4(((last_close - ema50_last) / ema50_last) * 100),
+        "price_vs_ema100_percent": r4(((last_close - ema100_last) / ema100_last) * 100),
+        "rsi_14_last_7": [r4(v) for v in df['RSI14'].tail(7).tolist()],
+        "macd_histogram_12_26_9_last_7": [r4(v) for v in df['MACD_HIST'].tail(7).tolist()],
+        "adx_14": r4(df['ADX14'].iloc[-1]),
+        "positive_di_14": r4(df['PLUS_DI14'].iloc[-1]),
+        "negative_di_14": r4(df['MINUS_DI14'].iloc[-1]),
+        "di_delta_14": r4(df['PLUS_DI14'].iloc[-1] - df['MINUS_DI14'].iloc[-1]),
         "crypto_fng_value": st.session_state.get("crypto_fng_value"),
         "crypto_fng_class": st.session_state.get("crypto_fng_class")
     }
+
 
     st.session_state["technical_payload"] = technical_payload
 
@@ -627,7 +701,7 @@ def ai_panel():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("AI Input Payload:")
+        st.markdown("Input Payload:")
         st.json(st.session_state["technical_payload"], expanded=1)
 
     with col2:
