@@ -436,6 +436,19 @@ with st.sidebar:
     fng_index()
 # === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
 
+# ===== TELEGRAM BOT =====
+with st.sidebar:
+    @st.fragment()
+    def telegram_bot():
+        st.divider()
+        st.title("📢 Telegram Bot")
+        st.markdown(
+            """
+            Get daily BTC technical and AI insights straight to your Telegram! 👇    
+            """
+        )
+        st.link_button("Start Bot", "https://t.me/dailybtcinsightbot")
+    telegram_bot()
 
 # ===== CRYPTO CHART =====
 @st.fragment()
