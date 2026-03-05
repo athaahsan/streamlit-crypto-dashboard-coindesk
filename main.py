@@ -714,7 +714,7 @@ def ai_panel():
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("Input Payload:")
+        st.markdown("Technical Indicators:")
         st.json(st.session_state["technical_payload"], expanded=1)
 
     with col2:
