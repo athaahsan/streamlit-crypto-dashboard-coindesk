@@ -8,8 +8,7 @@ It combines market visualization with an AI-powered technical insight system to 
 ## Features
 
 ### 📊 Live Price Data
-Displays cryptocurrency prices using the [CoinDesk Index API](https://developers.coindesk.com/documentation/data-api/index_cc), specifically based on the **CADLI** market.  
-More about CADLI can be found [here](https://indices.coindesk.com/cadli).
+Displays cryptocurrency prices using the [Binance Public API](https://binance-docs.github.io/apidocs/spot/en/).
 
 ### 📈 Chart Visualization
 - Candlestick, Line, and OHLC chart types
@@ -45,7 +44,7 @@ Analysis is strictly based on provided technical data without external market as
 
 ## APIs Used
 
-- **CoinDesk Index API**  
+- **Binance Public API**  
   Real-time ticker and historical pricing data.
 
 - **Alternative.me Fear & Greed Index API**  

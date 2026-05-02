@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 
 st.set_page_config(layout="wide")
 
-COINDESK_API_KEY = st.secrets["COINDESK_API_KEY"]
+# Binance Public API is used; no API key required.
 TICKER_DURATION = 10
 
 def r4(x):
@@ -285,62 +285,80 @@ st.session_state["_last_crypto"] = st.session_state['selected_crypto']
 
 @st.fragment()
 def ticker_component():
-    ticker_response = requests.get(
-        f'https://data-api.coindesk.com/index/cc/v1/latest/tick',
-        params={
-            "market": "cadli",
-            "instruments": {st.session_state['selected_crypto']},
-            "apply_mapping": "true",
-            "response_format": "JSON",
-            "api_key": COINDESK_API_KEY
-        },
-        headers={"Content-type": "application/json; charset=UTF-8"}
-    )
-    ticker_data = ticker_response.json()
-    df_ticker = pd.DataFrame.from_dict(ticker_data['Data'], orient='index').reset_index(drop=True)
-    ticker_value = df_ticker['VALUE'].iloc[0]
-    ticker_ath = df_ticker['LIFETIME_HIGH'].iloc[0]
-    from_ath_change = ((ticker_value - ticker_ath) / ticker_ath) * 100
-    st.session_state['ticker_dataframe'] = df_ticker
+    symbol = st.session_state['selected_crypto'].replace('-USD', 'USDT')
+    
+    ticker_url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
+    ticker_data = requests.get(ticker_url).json()
+    
+    ticker_value = float(ticker_data['lastPrice'])
+    day_change = float(ticker_data['priceChangePercent'])
+    day_high_val = float(ticker_data['highPrice'])
+    day_low_val = float(ticker_data['lowPrice'])
+    
+    m_klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1M&limit=1000"
+    m_klines = requests.get(m_klines_url).json()
+    
+    ticker_ath = 0
+    ticker_ath_ts = 0
+    for k in m_klines:
+        high = float(k[2])
+        if high > ticker_ath:
+            ticker_ath = high
+            ticker_ath_ts = int(k[0]) / 1000.0
+            
+    from_ath_change = ((ticker_value - ticker_ath) / ticker_ath) * 100 if ticker_ath > 0 else 0
+    
+    d_klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=366"
+    d_klines = requests.get(d_klines_url).json()
+    
+    def get_change(klines, days_ago):
+        if len(klines) >= days_ago:
+            old_price = float(klines[-days_ago][4])
+            return ((ticker_value - old_price) / old_price) * 100 if old_price > 0 else 0
+        elif len(klines) > 0:
+            old_price = float(klines[0][4])
+            return ((ticker_value - old_price) / old_price) * 100 if old_price > 0 else 0
+        return 0
+        
+    week_change = get_change(d_klines, 7)
+    month_change = get_change(d_klines, 30)
+    year_change = get_change(d_klines, 365)
+
     st.session_state['ticker_close'] = ticker_value
 
-    ticker_value = number_format(ticker_value)
-
-    day_change = df_ticker['CURRENT_DAY_CHANGE_PERCENTAGE'].iloc[0]
-    week_change = df_ticker['CURRENT_WEEK_CHANGE_PERCENTAGE'].iloc[0] 
-    month_change = df_ticker['CURRENT_MONTH_CHANGE_PERCENTAGE'].iloc[0]
-    year_change = df_ticker['CURRENT_YEAR_CHANGE_PERCENTAGE'].iloc[0]
-    day_change = f"{day_change:.2f}%"
-    week_change = f"{week_change:.2f}%"
-    month_change = f"{month_change:.2f}%"
-    year_change = f"{year_change:.2f}%"
-    from_ath_change = f"{from_ath_change:.2f}%"
-    day_high = f'${number_format(df_ticker['CURRENT_DAY_HIGH'].iloc[0])}'
-    day_low = f'${number_format(df_ticker['CURRENT_DAY_LOW'].iloc[0])}'
-    ticker_ath = number_format(ticker_ath)
-    ticker_ath_ts = df_ticker['LIFETIME_HIGH_TS'].iloc[0]
-    ticker_ath_ts = datetime.fromtimestamp(ticker_ath_ts)
-    ticker_ath_ts = ticker_ath_ts.strftime('%d %b %Y')
+    ticker_value_str = number_format(ticker_value)
+    
+    day_change_str = f"{day_change:.2f}%"
+    week_change_str = f"{week_change:.2f}%"
+    month_change_str = f"{month_change:.2f}%"
+    year_change_str = f"{year_change:.2f}%"
+    from_ath_change_str = f"{from_ath_change:.2f}%"
+    
+    day_high_str = f'${number_format(day_high_val)}'
+    day_low_str = f'${number_format(day_low_val)}'
+    ticker_ath_str = number_format(ticker_ath)
+    
+    ticker_ath_ts_dt = datetime.fromtimestamp(ticker_ath_ts) if ticker_ath_ts > 0 else datetime.now()
+    ticker_ath_ts_str = ticker_ath_ts_dt.strftime('%d %b %Y')
 
     col1, col2, col3 = st.columns(3, vertical_alignment='top')
     with col1:
-        st.metric(label=st.session_state['crypto_symbol'], value=f"${ticker_value}", delta=f"{day_change} (Today)")
+        st.metric(label=st.session_state['crypto_symbol'], value=f"${ticker_value_str}", delta=f"{day_change_str} (Today)")
     with col2:
-        st.metric(label=f"ATH ({ticker_ath_ts})", value=f'${ticker_ath}')
+        st.metric(label=f"ATH ({ticker_ath_ts_str})", value=f'${ticker_ath_str}')
     with col3:
-        st.markdown(f'''H: :green-background[{day_high}]''')
-        st.markdown(f'''L: :red-background[{day_low}]''')
-
+        st.markdown(f'''H: :green-background[{day_high_str}]''')
+        st.markdown(f'''L: :red-background[{day_low_str}]''')
 
     col4, col5, col6, col7 = st.columns(4)
     with col4:
-        st.metric(label="Week to Date", value="", delta=week_change)
+        st.metric(label="Week to Date", value="", delta=week_change_str)
     with col5:
-        st.metric(label="Month to Date", value="", delta=month_change)
+        st.metric(label="Month to Date", value="", delta=month_change_str)
     with col6:
-        st.metric(label="Year to Date", value="", delta=year_change)
+        st.metric(label="Year to Date", value="", delta=year_change_str)
     with col7:
-        st.metric(label="Since ATH", value="", delta=from_ath_change)
+        st.metric(label="Since ATH", value="", delta=from_ath_change_str)
 
 ticker_component()
 # === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === === ===
@@ -453,22 +471,25 @@ with st.sidebar:
 # ===== CRYPTO CHART =====
 @st.fragment()
 def chart_component():
+    interval_map = {"Days": "1d", "Hours": "1h", "Minutes": "1m"}
+    b_interval = interval_map.get(st.session_state['selected_interval'], "1d")
+    symbol = st.session_state['selected_crypto'].replace('-USD', 'USDT')
+
     response = requests.get(
-        f'https://data-api.coindesk.com/index/cc/v1/historical/{st.session_state['selected_interval'].lower()}',
+        f'https://api.binance.com/api/v3/klines',
         params={
-            "market": "cadli",
-            "instrument": st.session_state['selected_crypto'],
-            "limit": 300,
-            "aggregate": 1,
-            "fill": "true",
-            "apply_mapping": "true",
-            "response_format": "JSON",
-            "api_key": COINDESK_API_KEY
-        },
-        headers={"Content-type": "application/json; charset=UTF-8"}
+            "symbol": symbol,
+            "interval": b_interval,
+            "limit": 300
+        }
     )
     data = response.json()
-    df = pd.DataFrame(data['Data'])
+    df = pd.DataFrame(data, columns=['TIMESTAMP', 'OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME', 'CLOSE_TIME', 'QUOTE_VOL', 'TRADES', 'TB_BASE_VOL', 'TB_QUOTE_VOL', 'IGNORE'])
+    
+    for col in ['OPEN', 'HIGH', 'LOW', 'CLOSE', 'VOLUME']:
+        df[col] = df[col].astype(float)
+        
+    df['TIMESTAMP'] = df['TIMESTAMP'].astype(float) / 1000.0
 
     df.loc[df.index[-1], 'CLOSE'] = st.session_state['ticker_close']
     if df['HIGH'].iloc[-1] < st.session_state['ticker_close']:
@@ -503,7 +524,7 @@ def chart_component():
     ema100_last = df['EMA100'].iloc[-1]
 
     technical_payload = {
-        "source": "coindesk", 
+        "source": "binance", 
         "instrument": st.session_state['selected_crypto'],
         "price_last_14": [r4(v) for v in df['CLOSE'].tail(14).tolist()],
         "ema_20": r4(ema20_last),
