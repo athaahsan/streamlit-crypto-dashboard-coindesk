@@ -287,15 +287,22 @@ st.session_state["_last_crypto"] = st.session_state['selected_crypto']
 def ticker_component():
     symbol = st.session_state['selected_crypto'].replace('-USD', 'USDT')
     
-    ticker_url = f"https://api.binance.com/api/v3/ticker/24hr?symbol={symbol}"
-    ticker_data = requests.get(ticker_url).json()
+    ticker_url = f"https://data-api.binance.vision/api/v3/ticker/24hr?symbol={symbol}"
+    try:
+        ticker_data = requests.get(ticker_url).json()
+        if 'lastPrice' not in ticker_data:
+            st.error(f"Failed to fetch data for {symbol}. API response: {ticker_data.get('msg', 'Unknown error')}")
+            return
+    except Exception as e:
+        st.error(f"Error fetching data: {e}")
+        return
     
     ticker_value = float(ticker_data['lastPrice'])
     day_change = float(ticker_data['priceChangePercent'])
     day_high_val = float(ticker_data['highPrice'])
     day_low_val = float(ticker_data['lowPrice'])
     
-    m_klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1M&limit=1000"
+    m_klines_url = f"https://data-api.binance.vision/api/v3/klines?symbol={symbol}&interval=1M&limit=1000"
     m_klines = requests.get(m_klines_url).json()
     
     ticker_ath = 0
@@ -308,7 +315,7 @@ def ticker_component():
             
     from_ath_change = ((ticker_value - ticker_ath) / ticker_ath) * 100 if ticker_ath > 0 else 0
     
-    d_klines_url = f"https://api.binance.com/api/v3/klines?symbol={symbol}&interval=1d&limit=366"
+    d_klines_url = f"https://data-api.binance.vision/api/v3/klines?symbol={symbol}&interval=1d&limit=366"
     d_klines = requests.get(d_klines_url).json()
     
     def get_change(klines, days_ago):
@@ -476,7 +483,7 @@ def chart_component():
     symbol = st.session_state['selected_crypto'].replace('-USD', 'USDT')
 
     response = requests.get(
-        f'https://api.binance.com/api/v3/klines',
+        f'https://data-api.binance.vision/api/v3/klines',
         params={
             "symbol": symbol,
             "interval": b_interval,
